@@ -277,7 +277,7 @@ pub fn instant(cfg: Instant.Config) !Instant {
     const ts: Nanoseconds = switch (cfg.source) {
         .now => blk: {
             const io = cfg.io orelse return error.IoRequired;
-            const now = try std.Io.Clock.Timestamp.now(io, .awake);
+            const now = try std.Io.Clock.Timestamp.now(io, .real);
             break :blk now.raw.nanoseconds;
         },
         .unix_timestamp => |unix| @as(i128, unix) * ns_per_s,
