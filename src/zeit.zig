@@ -1454,7 +1454,7 @@ pub const Time = struct {
                             // If we ended on a digit, it wasn't a 0. That means this was not a
                             // valid fractional second
                             if (j + n < fmt.len and std.ascii.isDigit(fmt[j + n])) continue;
-                            i += j + n;
+                            i += n;
 
                             var buf: [9]u8 = undefined;
                             const str = try std.fmt.bufPrint(
@@ -1474,7 +1474,7 @@ pub const Time = struct {
                             // If we ended on a digit, it wasn't a 0. That means this was not a
                             // valid fractional second
                             if (j + n < fmt.len and std.ascii.isDigit(fmt[j + n])) continue;
-                            i += j + n;
+                            i += n;
 
                             var buf: [9]u8 = undefined;
                             const str = try std.fmt.bufPrint(
@@ -1726,20 +1726,28 @@ test "gofmt" {
         .year = 1970,
         .month = .feb,
         .day = 3,
+        .hour = 1,
+        .minute = 2,
+        .second = 3,
+        .millisecond = 4,
         .designation = "UTC",
     };
 
     writer.end = 0;
+    try time.gofmt(&writer, "2006-01-02T15:04:05.999999999Z07:00");
+    try std.testing.expectEqualStrings("1970-02-03T01:02:03.004Z", writer.buffered());
+
+    writer.end = 0;
     try time.gofmt(&writer, "Jan January J 01 02 03 04 05 06 002 Jan");
-    try std.testing.expectEqualStrings("Feb February J 02 03 12 00 00 70 034 Feb", writer.buffered());
+    try std.testing.expectEqualStrings("Feb February J 02 03 01 02 03 70 034 Feb", writer.buffered());
 
     writer.end = 0;
     try time.gofmt(&writer, "Mon Monday MST M 1 15 2 2006 _2 __2 Mon");
-    try std.testing.expectEqualStrings("Tue Tuesday UTC M 2 00 3 1970  3  34 Tue", writer.buffered());
+    try std.testing.expectEqualStrings("Tue Tuesday UTC M 2 01 3 1970  3  34 Tue", writer.buffered());
 
     writer.end = 0;
     try time.gofmt(&writer, "3 4 5");
-    try std.testing.expectEqualStrings("12 0 0", writer.buffered());
+    try std.testing.expectEqualStrings("1 2 3", writer.buffered());
 
     const time2: Time = .{
         .offset = 3661, // 1 hour, 1 minute, 1 second
