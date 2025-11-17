@@ -307,9 +307,7 @@ pub fn instant(cfg: Instant.Config) !Instant {
 }
 
 test "instant" {
-    var threaded: std.Io.Threaded = .init_single_threaded;
-    const io = threaded.io();
-    const now = try std.Io.Clock.Timestamp.now(io, .awake);
+    const now = try std.Io.Clock.Timestamp.now(std.testing.io, .awake);
     const original = Instant{
         .timestamp = now.raw.nanoseconds,
         .timezone = &utc,
@@ -1806,7 +1804,8 @@ test Instant {
     var env = try std.process.getEnvMap(alloc);
     defer env.deinit();
 
-    var threaded: std.Io.Threaded = .init_single_threaded;
+    var threaded = std.Io.Threaded.init(alloc);
+    defer threaded.deinit();
     const io = threaded.io();
 
     // Get an instant in time. The default gets "now" in UTC
@@ -1871,9 +1870,8 @@ test Instant {
 test "github.com/rockorager/zeit/issues/15" {
     // https://github.com/rockorager/zeit/issues/15
     const timestamp = 1732838300;
-    var threaded: std.Io.Threaded = .init_single_threaded;
-    const io = threaded.io();
-    const tz = try loadTimeZone(std.testing.allocator, io, .@"Europe/Berlin", null);
+    const allocator = std.testing.allocator;
+    const tz = try loadTimeZone(allocator, std.testing.io, .@"Europe/Berlin", null);
     defer tz.deinit();
     const inst = try instant(.{ .source = .{ .unix_timestamp = timestamp }, .timezone = &tz });
     var buf: [256]u8 = undefined;
