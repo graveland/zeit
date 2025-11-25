@@ -689,15 +689,27 @@ pub const TZInfo = struct {
             return posix.adjust(timestamp);
         }
 
-        const transition: Transition = blk: for (self.transitions, 0..) |transition, i| {
-            // TODO: implement what go does, which is a copy of c for how to
-            // handle times before the first transition how to handle this
-            if (i == 0 and transition.ts > timestamp) @panic("unimplemented. please complain to tim");
-            if (transition.ts <= timestamp) continue;
-            // we use the latest transition before ts, which is one less than
-            // our current iter
-            break :blk self.transitions[i - 1];
-        } else self.transitions[self.transitions.len - 1];
+        // Binary search to find the latest transition before or at timestamp
+        const transition: Transition = blk: {
+            if (self.transitions.len == 0) unreachable;
+            if (self.transitions[0].ts > timestamp) {
+                // TODO: implement what go does, which is a copy of c for how to
+                // handle times before the first transition
+                @panic("unimplemented. please complain to tim");
+            }
+
+            var lo: usize = 0;
+            var hi: usize = self.transitions.len;
+            while (hi - lo > 1) {
+                const mid = lo + (hi - lo) / 2;
+                if (self.transitions[mid].ts <= timestamp) {
+                    lo = mid;
+                } else {
+                    hi = mid;
+                }
+            }
+            break :blk self.transitions[lo];
+        };
         return .{
             .designation = transition.timetype.name(),
             .timestamp = timestamp + transition.timetype.offset,

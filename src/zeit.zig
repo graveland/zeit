@@ -381,13 +381,12 @@ pub const Month = enum(u4) {
 
     /// the number of days in a year before this month
     pub fn daysBefore(self: Month, year: i32) u9 {
-        var m = @intFromEnum(self) - 1;
-        var result: u9 = 0;
-        while (m > 0) : (m -= 1) {
-            const month: Month = @enumFromInt(m);
-            result += month.lastDay(year);
-        }
-        return result;
+        // Precomputed cumulative days for non-leap year (index 0 unused, 1=Jan, 2=Feb, etc.)
+        const days_before_month = [_]u9{ 0, 0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334 };
+        const m = @intFromEnum(self);
+        const base = days_before_month[m];
+        // Add 1 for leap years if month is after February
+        return if (m > 2 and isLeapYear(year)) base + 1 else base;
     }
 
     test "daysBefore" {
@@ -575,23 +574,27 @@ pub const Time = struct {
     offset: i32 = 0, // offset from UTC in seconds
     designation: []const u8 = "",
 
-    /// Creates a UTC Instant for this time
-    pub fn instant(self: Time) Instant {
+    /// Returns the nanosecond timestamp for this time (UTC)
+    pub fn timestamp(self: Time) Nanoseconds {
         const days = daysFromCivil(.{
             .year = self.year,
             .month = self.month,
             .day = self.day,
         });
-        return .{
-            .timestamp = @as(i128, days) * ns_per_day +
-                @as(i128, self.hour) * ns_per_hour +
-                @as(i128, self.minute) * ns_per_min +
-                @as(i128, self.second) * ns_per_s +
-                @as(i128, self.millisecond) * ns_per_ms +
-                @as(i128, self.microsecond) * ns_per_us +
-                @as(i128, self.nanosecond) -
-                @as(i128, self.offset) * ns_per_s,
+        return @as(i128, days) * ns_per_day +
+            @as(i128, self.hour) * ns_per_hour +
+            @as(i128, self.minute) * ns_per_min +
+            @as(i128, self.second) * ns_per_s +
+            @as(i128, self.millisecond) * ns_per_ms +
+            @as(i128, self.microsecond) * ns_per_us +
+            @as(i128, self.nanosecond) -
+            @as(i128, self.offset) * ns_per_s;
+    }
 
+    /// Creates a UTC Instant for this time
+    pub fn instant(self: Time) Instant {
+        return .{
+            .timestamp = self.timestamp(),
             .timezone = &utc,
         };
     }
@@ -1074,9 +1077,18 @@ pub const Time = struct {
         }
     }
 
+    inline fn getCachedDays(self: Time, cache: *?Days) Days {
+        if (cache.*) |d| return d;
+        const d = daysFromCivil(.{ .year = self.year, .month = self.month, .day = self.day });
+        cache.* = d;
+        return d;
+    }
+
     /// Format time using strftime(3) specified, eg %Y-%m-%dT%H:%M:%S
     pub fn strftime(self: Time, writer: *std.Io.Writer, fmt: []const u8) !void {
         const inst = self.instant();
+        // Lazy cache for days calculation (used by weekday specifiers)
+        var cached_days: ?Days = null;
         var i: usize = 0;
         while (i < fmt.len) {
             const last = i;
@@ -1093,17 +1105,11 @@ pub const Time = struct {
             switch (b) {
                 '%' => try writer.writeByte('%'),
                 'a' => {
-                    const days = daysFromCivil(
-                        .{ .year = self.year, .month = self.month, .day = self.day },
-                    );
-                    const weekday = weekdayFromDays(days);
+                    const weekday = weekdayFromDays(self.getCachedDays(&cached_days));
                     try writer.writeAll(weekday.shortName());
                 },
                 'A' => {
-                    const days = daysFromCivil(
-                        .{ .year = self.year, .month = self.month, .day = self.day },
-                    );
-                    const weekday = weekdayFromDays(days);
+                    const weekday = weekdayFromDays(self.getCachedDays(&cached_days));
                     try writer.writeAll(weekday.name());
                 },
                 'b', 'h' => try writer.writeAll(self.month.shortName()),
@@ -1166,10 +1172,7 @@ pub const Time = struct {
                 't' => try writer.writeByte('\t'),
                 'T' => try self.strftime(writer, "%H:%M:%S"),
                 'u' => {
-                    const days = daysFromCivil(
-                        .{ .year = self.year, .month = self.month, .day = self.day },
-                    );
-                    const weekday = weekdayFromDays(days);
+                    const weekday = weekdayFromDays(self.getCachedDays(&cached_days));
                     switch (weekday) {
                         .sun => try writer.writeByte('7'),
                         else => try writer.writeByte(@as(u8, @intFromEnum(weekday)) + 0x30),
@@ -1195,10 +1198,7 @@ pub const Time = struct {
                 },
                 'V' => return error.UnsupportedSpecifier,
                 'w' => {
-                    const days = daysFromCivil(
-                        .{ .year = self.year, .month = self.month, .day = self.day },
-                    );
-                    const weekday = weekdayFromDays(days);
+                    const weekday = weekdayFromDays(self.getCachedDays(&cached_days));
                     try writer.writeByte(@as(u8, @intFromEnum(weekday)) + 0x30);
                 },
                 'W' => {
@@ -1244,6 +1244,8 @@ pub const Time = struct {
 
     /// Format using golang magic date format.
     pub fn gofmt(self: Time, writer: *std.Io.Writer, fmt: []const u8) !void {
+        // Lazy cache for days calculation (used by weekday specifiers)
+        var cached_days: ?Days = null;
         var i: usize = 0;
         while (i < fmt.len) : (i += 1) {
             const b = fmt[i];
@@ -1259,26 +1261,17 @@ pub const Time = struct {
                 },
                 'M' => { // Monday, Mon, MST
                     if (std.mem.startsWith(u8, fmt[i..], "Monday")) {
-                        const days = daysFromCivil(
-                            .{ .year = self.year, .month = self.month, .day = self.day },
-                        );
-                        const weekday = weekdayFromDays(days);
+                        const weekday = weekdayFromDays(self.getCachedDays(&cached_days));
                         try writer.writeAll(weekday.name());
                         i += 5;
                     } else if (std.mem.startsWith(u8, fmt[i..], "Mon")) {
                         if (i + 3 >= fmt.len) {
-                            const days = daysFromCivil(
-                                .{ .year = self.year, .month = self.month, .day = self.day },
-                            );
-                            const weekday = weekdayFromDays(days);
+                            const weekday = weekdayFromDays(self.getCachedDays(&cached_days));
                             try writer.writeAll(weekday.shortName());
                             i += 2;
                         } else if (!std.ascii.isLower(fmt[i + 3])) {
                             // We only write "Mon" if the next char is *not* a lowercase
-                            const days = daysFromCivil(
-                                .{ .year = self.year, .month = self.month, .day = self.day },
-                            );
-                            const weekday = weekdayFromDays(days);
+                            const weekday = weekdayFromDays(self.getCachedDays(&cached_days));
                             try writer.writeAll(weekday.shortName());
                             i += 2;
                         }
@@ -1544,12 +1537,12 @@ pub const Time = struct {
     }
 
     pub fn compare(self: Time, time: Time) TimeComparison {
-        const self_instant = self.instant();
-        const time_instant = time.instant();
+        const self_ts = self.timestamp();
+        const time_ts = time.timestamp();
 
-        if (self_instant.timestamp > time_instant.timestamp) {
+        if (self_ts > time_ts) {
             return .after;
-        } else if (self_instant.timestamp < time_instant.timestamp) {
+        } else if (self_ts < time_ts) {
             return .before;
         } else {
             return .equal;
@@ -1557,21 +1550,15 @@ pub const Time = struct {
     }
 
     pub fn after(self: Time, time: Time) bool {
-        const self_instant = self.instant();
-        const time_instant = time.instant();
-        return self_instant.timestamp > time_instant.timestamp;
+        return self.timestamp() > time.timestamp();
     }
 
     pub fn before(self: Time, time: Time) bool {
-        const self_instant = self.instant();
-        const time_instant = time.instant();
-        return self_instant.timestamp < time_instant.timestamp;
+        return self.timestamp() < time.timestamp();
     }
 
     pub fn eql(self: Time, time: Time) bool {
-        const self_instant = self.instant();
-        const time_instant = time.instant();
-        return self_instant.timestamp == time_instant.timestamp;
+        return self.timestamp() == time.timestamp();
     }
 };
 
