@@ -1,5 +1,6 @@
 const std = @import("std");
 const constants = @import("constants.zig");
+const linux = std.os.linux;
 
 const ns_per_us = std.time.ns_per_us;
 const ns_per_ms = std.time.ns_per_ms;
@@ -69,6 +70,16 @@ pub const Duration = struct {
             .float => @as(T, @floatFromInt(ns)) / @as(T, @floatFromInt(divisor)),
             .int => @intCast(ns / divisor),
             else => @compileError("Duration.inAs requires int or float type"),
+        };
+    }
+
+    /// Convert duration to linux.timespec for use with nanosleep.
+    /// Only available on Linux platforms.
+    pub fn toTimespec(self: Duration) !linux.timespec {
+        const ns = try self.inNanoseconds();
+        return linux.timespec{
+            .sec = @intCast(@divFloor(ns, ns_per_s)),
+            .nsec = @intCast(@mod(ns, ns_per_s)),
         };
     }
 
@@ -691,5 +702,47 @@ pub const Duration = struct {
         const d2 = Duration.from(2.5, .seconds);
         try std.testing.expectEqual(2, d2.seconds);
         try std.testing.expectEqual(500, d2.milliseconds);
+    }
+
+    test "Duration.toTimespec" {
+        // Test simple second conversion
+        {
+            const d = Duration{ .seconds = 5 };
+            const ts = try d.toTimespec();
+            try std.testing.expectEqual(5, ts.sec);
+            try std.testing.expectEqual(0, ts.nsec);
+        }
+
+        // Test with nanoseconds
+        {
+            const d = Duration{ .seconds = 3, .nanoseconds = 500_000_000 };
+            const ts = try d.toTimespec();
+            try std.testing.expectEqual(3, ts.sec);
+            try std.testing.expectEqual(500_000_000, ts.nsec);
+        }
+
+        // Test with multiple units
+        {
+            const d = Duration{ .minutes = 1, .seconds = 30, .milliseconds = 250 };
+            const ts = try d.toTimespec();
+            try std.testing.expectEqual(90, ts.sec);
+            try std.testing.expectEqual(250_000_000, ts.nsec);
+        }
+
+        // Test with larger durations
+        {
+            const d = Duration{ .hours = 1 };
+            const ts = try d.toTimespec();
+            try std.testing.expectEqual(3600, ts.sec);
+            try std.testing.expectEqual(0, ts.nsec);
+        }
+
+        // Test zero duration
+        {
+            const d = Duration{};
+            const ts = try d.toTimespec();
+            try std.testing.expectEqual(0, ts.sec);
+            try std.testing.expectEqual(0, ts.nsec);
+        }
     }
 };

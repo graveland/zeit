@@ -198,6 +198,9 @@ const ns = try duration.inNanoseconds();   // 5_400_000_000_000
 
 // Convert with fractional precision
 const hours_f64 = try duration.inAs(f64, .hours); // 1.5
+
+// Convert to linux.timespec for use with nanosleep (Linux only)
+const ts = try duration.toTimespec();
 ```
 
 ### Duration Units
