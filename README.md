@@ -108,3 +108,89 @@ timer.reset();
 // ... second operation ...
 const second_duration = timer.elapsed(u64, .micros);
 ```
+
+## Duration
+
+`zeit.Duration` represents a span of time with nanosecond precision. It provides Go-style duration parsing and formatting, with the addition of days (`d`) as a unit.
+
+### Creating Durations
+
+```zig
+const zeit = @import("zeit");
+
+// Parse a duration string (supports ns, us, ms, s, m, h, d)
+const duration = try zeit.Duration.parse("1h30m");
+const complex = try zeit.Duration.parse("2d12h45m30s");
+const fractional = try zeit.Duration.parse("1.5h");  // 1 hour 30 minutes
+const negative = try zeit.Duration.parse("-45m");
+
+// Create from struct
+const manual = zeit.Duration{
+    .hours = 2,
+    .minutes = 30,
+    .seconds = 15,
+};
+
+// Create from nanoseconds
+const from_ns = zeit.Duration.fromNanoseconds(1_500_000_000);  // 1.5 seconds
+```
+
+### Formatting Durations
+
+```zig
+var buf: [64]u8 = undefined;
+const duration = zeit.Duration{ .hours = 1, .minutes = 30 };
+
+// Format to a buffer
+const str = try duration.bufPrint(&buf);
+// str = "1h30m"
+
+// Or write to a writer
+var writer = std.Io.Writer.fixed(&buf);
+try duration.format(&writer);
+```
+
+Examples of formatted durations:
+- `300ms` - 300 milliseconds
+- `1h30m` - 1 hour 30 minutes
+- `2d12h` - 2 days 12 hours
+- `1h23m45s` - 1 hour 23 minutes 45 seconds
+- `0s` - zero duration
+
+### Rounding and Truncating
+
+```zig
+// Round to nearest hour (halfway rounds away from zero)
+const d1 = try zeit.Duration.parse("1h45m");
+const rounded = try d1.round(zeit.Duration{ .hours = 1 });
+// rounded = "2h"
+
+// Round to nearest 15 minutes
+const d2 = try zeit.Duration.parse("1h8m");
+const rounded15 = try d2.round(zeit.Duration{ .minutes = 15 });
+// rounded15 = "1h15m"
+
+// Truncate toward zero
+const d3 = try zeit.Duration.parse("1h45m");
+const truncated = try d3.truncate(zeit.Duration{ .hours = 1 });
+// truncated = "1h"
+```
+
+### Converting to Nanoseconds
+
+```zig
+const duration = zeit.Duration{ .seconds = 5 };
+const ns = try duration.inNanoseconds();  // 5_000_000_000
+```
+
+### Duration Units
+
+The `Duration.Unit` enum provides standard time units:
+
+```zig
+const unit = zeit.Duration.Unit.second;
+const ns_per_unit = unit.toNanoseconds();  // 1_000_000_000
+const unit_duration = unit.toDuration();   // Duration{ .seconds = 1 }
+```
+
+Available units: `.nanosecond`, `.microsecond`, `.millisecond`, `.second`, `.minute`, `.hour`, `.day`
