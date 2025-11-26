@@ -52,6 +52,26 @@ pub const Duration = struct {
         return ns;
     }
 
+    /// Convert duration to specified unit as u64 (common case).
+    /// Usage: duration.in(.seconds)
+    pub fn in(self: Duration, comptime unit: constants.Unit) error{Overflow}!u64 {
+        const ns = try self.inNanoseconds();
+        return ns / unit.toNanoseconds();
+    }
+
+    /// Convert duration to specified unit with custom return type.
+    /// Supports both integer and floating-point types.
+    /// Usage: duration.inAs(f64, .seconds) or duration.inAs(u32, .millis)
+    pub fn inAs(self: Duration, comptime T: type, comptime unit: constants.Unit) error{Overflow}!T {
+        const ns = try self.inNanoseconds();
+        const divisor = unit.toNanoseconds();
+        return switch (@typeInfo(T)) {
+            .float => @as(T, @floatFromInt(ns)) / @as(T, @floatFromInt(divisor)),
+            .int => @intCast(ns / divisor),
+            else => @compileError("Duration.inAs requires int or float type"),
+        };
+    }
+
     /// Parse a Go-style duration string with support for days.
     /// Valid time units are "ns", "us", "ms", "s", "m", "h", "d".
     /// Examples: "300ms", "1.5h", "2h45m", "-1.5h", "1h30m45s", "2d12h"
@@ -156,6 +176,21 @@ pub const Duration = struct {
             .microseconds = @intCast(microseconds),
             .nanoseconds = @intCast(nanoseconds),
         };
+    }
+
+    /// Create Duration from value and unit.
+    /// Usage: Duration.from(15, .seconds) or Duration.from(1.5, .hours)
+    pub fn from(value: anytype, comptime unit: constants.Unit) Duration {
+        const T = @TypeOf(value);
+        const multiplier = unit.toNanoseconds();
+
+        const ns: i128 = switch (@typeInfo(T)) {
+            .float, .comptime_float => @intFromFloat(value * @as(f64, @floatFromInt(multiplier))),
+            .int, .comptime_int => @as(i128, value) * @as(i128, multiplier),
+            else => @compileError("Duration.from requires int or float value"),
+        };
+
+        return fromNanoseconds(ns);
     }
 
     /// Create a Duration from a time unit
@@ -612,5 +647,49 @@ pub const Duration = struct {
             const s = try truncated.bufPrint(&buf);
             try std.testing.expectEqualStrings("5ms", s);
         }
+    }
+
+    test "Duration.in conversions" {
+        const d = Duration{ .seconds = 5 };
+        try std.testing.expectEqual(5, try d.in(.seconds));
+        try std.testing.expectEqual(5000, try d.in(.millis));
+        try std.testing.expectEqual(5_000_000, try d.in(.micros));
+        try std.testing.expectEqual(5_000_000_000, try d.in(.nanos));
+    }
+
+    test "Duration.inAs with float" {
+        const d = Duration{ .seconds = 5, .milliseconds = 500 };
+        const secs = try d.inAs(f64, .seconds);
+        // f64 conversion loses some precision, so we need a wider tolerance
+        try std.testing.expectApproxEqAbs(5.5, secs, 0.01);
+    }
+
+    test "Duration.inAs with integer" {
+        const d = Duration{ .minutes = 2, .seconds = 30 };
+        const secs_u64 = try d.inAs(u64, .seconds);
+        try std.testing.expectEqual(150, secs_u64);
+
+        const secs_u32 = try d.inAs(u32, .seconds);
+        try std.testing.expectEqual(150, secs_u32);
+    }
+
+    test "Duration.from with integer" {
+        const d1 = Duration.from(15, .seconds);
+        try std.testing.expectEqual(15, d1.seconds);
+        try std.testing.expectEqual(0, d1.minutes);
+
+        const d2 = Duration.from(90, .seconds);
+        try std.testing.expectEqual(30, d2.seconds);
+        try std.testing.expectEqual(1, d2.minutes);
+    }
+
+    test "Duration.from with float" {
+        const d1 = Duration.from(1.5, .hours);
+        try std.testing.expectEqual(1, d1.hours);
+        try std.testing.expectEqual(30, d1.minutes);
+
+        const d2 = Duration.from(2.5, .seconds);
+        try std.testing.expectEqual(2, d2.seconds);
+        try std.testing.expectEqual(500, d2.milliseconds);
     }
 };

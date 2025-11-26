@@ -1,5 +1,6 @@
 const std = @import("std");
 const timezone = @import("timezone.zig");
+const Duration = @import("duration.zig").Duration;
 
 pub const Days = i64;
 pub const Nanoseconds = i128;
@@ -35,6 +36,12 @@ pub const Unit = enum {
             .hours => ns_per_hour,
             .days => ns_per_day,
         };
+    }
+
+    /// Convert unit to a Duration (defined in duration.zig)
+    /// This is a forward declaration that will be resolved at comptime
+    pub inline fn toDuration(self: Unit) Duration {
+        return Duration.fromUnit(self);
     }
 };
 

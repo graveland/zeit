@@ -80,6 +80,7 @@ pub fn main() !void {
 
 ```zig
 const zeit = @import("zeit");
+const Unit = zeit.Unit;
 
 pub fn example(io: std.Io) void {
     // Start a timer
@@ -87,26 +88,30 @@ pub fn example(io: std.Io) void {
 
     // ... do some work ...
 
-    // Get elapsed time in any unit and numeric type
-    const micros = timer.elapsed(u64, .micros);    // microseconds as u64
-    const millis = timer.elapsed(f64, .millis);    // milliseconds as f64
-    const nanos = timer.elapsed(i128, .nanos);     // nanoseconds as i128
-    const secs = timer.elapsed(f64, .seconds);     // seconds as f64
+    // Simple case - get elapsed time as u64
+    const millis = timer.elapsed(.millis);
+
+    // Advanced - specify return type for fractional values
+    const secs_f64 = timer.elapsedAs(f64, .seconds);
+
+    // Get as Duration for formatting
+    const duration = timer.elapsedDuration();
+    std.debug.print("Took: {}\n", .{duration}); // e.g., "Took: 1h30m"
 }
 ```
 
-Available units: `.nanos`, `.micros`, `.millis`, `.seconds`
+Available units: `.nanos`, `.micros`, `.millis`, `.seconds`, `.minutes`, `.hours`, `.days`
 
 The timer can also be reset to measure a new interval:
 
 ```zig
 var timer = zeit.Timer.start(io);
 // ... first operation ...
-const first_duration = timer.elapsed(u64, .micros);
+const first_duration = timer.elapsed(.micros);
 
 timer.reset();
 // ... second operation ...
-const second_duration = timer.elapsed(u64, .micros);
+const second_duration = timer.elapsed(.micros);
 ```
 
 ## Duration
@@ -117,22 +122,23 @@ const second_duration = timer.elapsed(u64, .micros);
 
 ```zig
 const zeit = @import("zeit");
+const Unit = zeit.Unit;
 
-// Parse a duration string (supports ns, us, ms, s, m, h, d)
-const duration = try zeit.Duration.parse("1h30m");
-const complex = try zeit.Duration.parse("2d12h45m30s");
-const fractional = try zeit.Duration.parse("1.5h");  // 1 hour 30 minutes
-const negative = try zeit.Duration.parse("-45m");
+// From values and units
+const d1 = zeit.Duration.from(15, .seconds);
+const d2 = zeit.Duration.from(1.5, .hours);
 
-// Create from struct
-const manual = zeit.Duration{
-    .hours = 2,
-    .minutes = 30,
-    .seconds = 15,
-};
+// Or use struct literals
+const d3 = zeit.Duration{ .hours = 1, .minutes = 30 };
 
-// Create from nanoseconds
-const from_ns = zeit.Duration.fromNanoseconds(1_500_000_000);  // 1.5 seconds
+// Or parse strings (supports ns, us, ms, s, m, h, d)
+const d4 = try zeit.Duration.parse("1h30m");
+const d5 = try zeit.Duration.parse("2d12h45m30s");
+const d6 = try zeit.Duration.parse("1.5h");  // 1 hour 30 minutes
+const d7 = try zeit.Duration.parse("-45m");
+
+// Or create from nanoseconds
+const d8 = zeit.Duration.fromNanoseconds(1_500_000_000);  // 1.5 seconds
 ```
 
 ### Formatting Durations
@@ -176,21 +182,32 @@ const truncated = try d3.truncate(zeit.Duration{ .hours = 1 });
 // truncated = "1h"
 ```
 
-### Converting to Nanoseconds
+### Converting Durations
 
 ```zig
-const duration = zeit.Duration{ .seconds = 5 };
-const ns = try duration.inNanoseconds();  // 5_000_000_000
+const zeit = @import("zeit");
+const Unit = zeit.Unit;
+
+const duration = try zeit.Duration.parse("1h30m");
+
+// Convert to different units as u64
+const hours = try duration.in(.hours);     // 1
+const minutes = try duration.in(.minutes); // 90
+const seconds = try duration.in(.seconds); // 5400
+const ns = try duration.inNanoseconds();   // 5_400_000_000_000
+
+// Convert with fractional precision
+const hours_f64 = try duration.inAs(f64, .hours); // 1.5
 ```
 
 ### Duration Units
 
-The `Duration.Unit` enum provides standard time units:
+The `zeit.Unit` enum provides standard time units:
 
 ```zig
-const unit = zeit.Duration.Unit.second;
+const unit = zeit.Unit.seconds;
 const ns_per_unit = unit.toNanoseconds();  // 1_000_000_000
 const unit_duration = unit.toDuration();   // Duration{ .seconds = 1 }
 ```
 
-Available units: `.nanosecond`, `.microsecond`, `.millisecond`, `.second`, `.minute`, `.hour`, `.day`
+Available units: `.nanos`, `.micros`, `.millis`, `.seconds`, `.minutes`, `.hours`, `.days`
