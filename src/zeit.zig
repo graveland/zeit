@@ -24,6 +24,52 @@ const s_per_hour = std.time.s_per_hour;
 const s_per_day = std.time.s_per_day;
 const days_per_era = 365 * 400 + 97;
 
+/// A simple timer for measuring elapsed time.
+/// Useful for benchmarking and metrics.
+pub const Timer = struct {
+    start_ns: i128,
+    io: std.Io,
+
+    /// Start a new timer from the current time.
+    /// Uses the monotonic clock (.awake) which is not affected by system time changes.
+    pub fn start(io: std.Io) Timer {
+        const start_ns = if (std.Io.Clock.Timestamp.now(io, .awake)) |ts| ts.raw.nanoseconds else |_| 0;
+        return .{ .start_ns = start_ns, .io = io };
+    }
+
+    /// Returns elapsed time in the requested unit and type.
+    /// Usage: timer.elapsed(u64, .micros) or timer.elapsed(f64, .millis)
+    pub fn elapsed(self: Timer, comptime T: type, comptime unit: Unit) T {
+        const now = std.Io.Clock.Timestamp.now(self.io, .awake) catch return 0;
+        const elapsed_ns = now.raw.nanoseconds - self.start_ns;
+        const divisor: i128 = switch (unit) {
+            .nanos => 1,
+            .micros => ns_per_us,
+            .millis => ns_per_ms,
+            .seconds => ns_per_s,
+        };
+        const value = @divFloor(elapsed_ns, divisor);
+        return switch (@typeInfo(T)) {
+            .float => @floatFromInt(value),
+            .int => @intCast(value),
+            else => @compileError("Timer.elapsed requires int or float type"),
+        };
+    }
+
+    /// Reset the timer to now
+    pub fn reset(self: *Timer) void {
+        const ts = std.Io.Clock.Timestamp.now(self.io, .awake) catch return;
+        self.start_ns = ts.raw.nanoseconds;
+    }
+
+    pub const Unit = enum {
+        nanos,
+        micros,
+        millis,
+        seconds,
+    };
+};
+
 pub const utc: TimeZone = .{ .fixed = .{
     .name = "UTC",
     .offset = 0,
