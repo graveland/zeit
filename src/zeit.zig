@@ -1,6 +1,9 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const location = @import("location.zig");
+const build_options = @import("build_options");
+
+pub const version = build_options.version;
 
 // Module imports
 pub const timezone = @import("timezone.zig");

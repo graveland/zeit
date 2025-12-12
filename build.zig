@@ -1,5 +1,36 @@
 const std = @import("std");
 
+fn getVersion(b: *std.Build) []const u8 {
+    // Get the directory where this build.zig lives
+    const src_dir = std.fs.path.dirname(@src().file) orelse ".";
+    var exit_code: u8 = 0;
+    const git_hash = b.runAllowFail(&[_][]const u8{
+        "git", "-C", src_dir, "rev-parse", "HEAD",
+    }, &exit_code, .Inherit) catch return "unknown";
+    return std.mem.trim(u8, git_hash, &std.ascii.whitespace);
+}
+
+/// Creates the zeit module with injected dependencies.
+/// Use this when incorporating zeit as a dependency to share modules with parent.
+pub fn createModule(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    root_source_file: std.Build.LazyPath,
+) *std.Build.Module {
+    const zeit_mod = b.addModule("zeit", .{
+        .root_source_file = root_source_file,
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const options = b.addOptions();
+    options.addOption([]const u8, "version", getVersion(b));
+    zeit_mod.addOptions("build_options", options);
+
+    return zeit_mod;
+}
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -9,6 +40,10 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+
+    const options = b.addOptions();
+    options.addOption([]const u8, "version", getVersion(b));
+    root_module.addOptions("build_options", options);
 
     const lib_unit_tests = b.addTest(.{
         .root_module = root_module,
