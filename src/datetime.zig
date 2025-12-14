@@ -346,7 +346,32 @@ pub const Time = struct {
                 },
                 .minute_fraction_or_second => {
                     const b = iso[i];
-                    if (b == '.') return error.UnhandledFormat; // TODO:
+                    if (b == '.') {
+                        // Minute fraction (e.g., "12:30.5" = 12:30:30)
+                        i += 1;
+                        const frac_end = std.mem.indexOfAnyPos(u8, iso, i, "Z+-") orelse iso.len;
+                        const rhs = try parseInt(u64, iso[i..frac_end], 10);
+                        const sigs = frac_end - i;
+                        // Convert minute fraction to seconds and sub-second units
+                        // 0.5 minutes = 30 seconds, stored as nanoseconds first
+                        const pow = std.math.pow(u64, 10, @as(u64, @intCast(9 - sigs)));
+                        const nanos_in_minute = rhs * pow; // fractional minute in nanoseconds (scaled to 1 minute = 10^9)
+                        // Convert to actual nanoseconds: nanos_in_minute represents fraction of minute
+                        // So multiply by 60 to get nanoseconds worth of seconds
+                        const total_nanos = (nanos_in_minute * 60);
+                        const total_seconds = @divFloor(total_nanos, ns_per_s);
+                        time.second = @intCast(@min(total_seconds, 59));
+                        var remaining_nanos = total_nanos - (total_seconds * ns_per_s);
+                        time.millisecond = @intCast(@divFloor(remaining_nanos, ns_per_ms));
+                        remaining_nanos -= @as(u64, time.millisecond) * ns_per_ms;
+                        time.microsecond = @intCast(@divFloor(remaining_nanos, ns_per_us));
+                        remaining_nanos -= @as(u64, time.microsecond) * ns_per_us;
+                        time.nanosecond = @intCast(remaining_nanos);
+                        i = frac_end;
+                        // Skip to offset handling (no seconds field after minute fraction)
+                        state = .second_fraction_or_offset;
+                        continue;
+                    }
                     if (b == ':') i += 1;
                     if (std.ascii.isDigit(iso[i])) {
                         time.second = try parseInt(u6, iso[i .. i + 2], 10);
@@ -472,6 +497,21 @@ pub const Time = struct {
             try std.testing.expectEqual(123, s_frac.millisecond);
             try std.testing.expectEqual(0, s_frac.microsecond);
             try std.testing.expectEqual(0, s_frac.nanosecond);
+        }
+        {
+            // Minute fraction: 12:30.5 = 12:30:30
+            const m_frac = try Time.fromISO8601("2000-02-12T12:30.5Z");
+            try std.testing.expectEqual(12, m_frac.hour);
+            try std.testing.expectEqual(30, m_frac.minute);
+            try std.testing.expectEqual(30, m_frac.second);
+            try std.testing.expectEqual(0, m_frac.millisecond);
+        }
+        {
+            // Minute fraction with offset: 12:30.25 = 12:30:15
+            const m_frac_off = try Time.fromISO8601("2000-02-12T12:30.25+01:00");
+            try std.testing.expectEqual(30, m_frac_off.minute);
+            try std.testing.expectEqual(15, m_frac_off.second);
+            try std.testing.expectEqual(s_per_hour, m_frac_off.offset);
         }
         {
             const offset = try Time.fromISO8601("2000-02-12T11:12:13.123-12:00");
