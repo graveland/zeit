@@ -693,9 +693,9 @@ pub const TZInfo = struct {
         const transition: Transition = blk: {
             if (self.transitions.len == 0) unreachable;
             if (self.transitions[0].ts > timestamp) {
-                // TODO: implement what go does, which is a copy of c for how to
-                // handle times before the first transition
-                @panic("unimplemented. please complain to tim");
+                // Before first transition: use the first transition's timezone type
+                // This follows Go's behavior (time/zoneinfo.go lookup function)
+                break :blk self.transitions[0];
             }
 
             var lo: usize = 0;
@@ -824,14 +824,24 @@ pub const Windows = struct {
         var localtime: windows.SYSTEMTIME = undefined;
         if (windows.SystemTimeToTzSpecificLocalTimeEx(&self.zoneinfo, &systemtime, &localtime) == 0) {
             const err = std.os.windows.kernel32.GetLastError();
-            std.log.err("{}", .{err});
-            @panic("TODO");
+            std.log.err("SystemTimeToTzSpecificLocalTimeEx failed: {}", .{err});
+            // Fall back to UTC when Windows API fails
+            return .{
+                .designation = "UTC",
+                .timestamp = timestamp,
+                .is_dst = false,
+            };
         }
         var tzi: windows.TIME_ZONE_INFORMATION = undefined;
         if (windows.GetTimeZoneInformationForYear(localtime.wYear, &self.zoneinfo, &tzi) == 0) {
             const err = std.os.windows.kernel32.GetLastError();
-            std.log.err("{}", .{err});
-            @panic("TODO");
+            std.log.err("GetTimeZoneInformationForYear failed: {}", .{err});
+            // Fall back to UTC when Windows API fails
+            return .{
+                .designation = "UTC",
+                .timestamp = timestamp,
+                .is_dst = false,
+            };
         }
         const is_dst = isDST(timestamp, &tzi, &localtime);
         return .{
