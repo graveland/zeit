@@ -16,7 +16,7 @@ pub fn main() !void {
         const eol = std.mem.indexOfScalarPos(u8, data, read_idx, '\n') orelse data.len;
         defer read_idx = eol + 1;
         const input_line = data[read_idx..eol];
-        const line = std.mem.trimRight(u8, std.mem.trim(u8, input_line, " \t<>"), "/");
+        const line = std.mem.trimEnd(u8, std.mem.trim(u8, input_line, " \t<>"), "/");
         if (!std.mem.startsWith(u8, line, "mapZone")) continue;
         var idx: usize = 0;
         const windows = blk: {
