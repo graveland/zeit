@@ -117,7 +117,7 @@ pub const Posix = struct {
                     const julian = try std.fmt.parseInt(u9, str[1..], 10);
                     return .{ .julian = .{ .day = julian } };
                 },
-                '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' => |_| {
+                '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' => {
                     const julian = try std.fmt.parseInt(u9, str, 10);
                     return .{ .julian_leap = .{ .day = julian } };
                 },
