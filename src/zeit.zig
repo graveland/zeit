@@ -55,7 +55,7 @@ pub const instant = datetime_mod.instant;
 
 const assert = std.debug.assert;
 
-pub fn local(alloc: std.mem.Allocator, io: std.Io, maybe_env: ?*const std.process.EnvMap) !TimeZone {
+pub fn local(alloc: std.mem.Allocator, io: std.Io, maybe_env: ?*const std.process.Environ.Map) !TimeZone {
     switch (builtin.os.tag) {
         .windows => {
             const win = try timezone.Windows.local(alloc);
@@ -68,8 +68,8 @@ pub fn local(alloc: std.mem.Allocator, io: std.Io, maybe_env: ?*const std.proces
                 }
             }
 
-            const f = try std.fs.cwd().openFile("/etc/localtime", .{});
-            defer f.close();
+            const f = std.Io.File.open("/etc/localtime", .{}, io) catch return utc(alloc);
+            defer f.close(io);
             var io_buffer: [2048]u8 = undefined;
             var reader = f.reader(io, &io_buffer);
             return .{ .tzinfo = try timezone.TZInfo.parse(alloc, &reader.interface) };
@@ -86,7 +86,7 @@ fn localFromEnv(
     alloc: std.mem.Allocator,
     io: std.Io,
     tz: []const u8,
-    env: *const std.process.EnvMap,
+    env: *const std.process.Environ.Map,
 ) !TimeZone {
     assert(tz.len != 0); // TZ is empty string
 
@@ -95,8 +95,8 @@ fn localFromEnv(
 
     assert(tz.len > 1); // TZ not long enough
     if (tz[1] == '/') {
-        const f = try std.fs.cwd().openFile(tz[1..], .{});
-        defer f.close();
+        const f = std.Io.File.open(tz[1..], .{}, io) catch return error.FileNotFound;
+        defer f.close(io);
         var io_buffer: [1024]u8 = undefined;
         var reader = f.reader(io, &io_buffer);
         return .{ .tzinfo = try timezone.TZInfo.parse(alloc, &reader.interface) };
@@ -112,7 +112,7 @@ pub fn loadTimeZone(
     alloc: std.mem.Allocator,
     io: std.Io,
     loc: Location,
-    maybe_env: ?*const std.process.EnvMap,
+    maybe_env: ?*const std.process.Environ.Map,
 ) !TimeZone {
     switch (builtin.os.tag) {
         .windows => {
@@ -122,12 +122,12 @@ pub fn loadTimeZone(
         else => {},
     }
 
-    var dir: std.fs.Dir = blk: {
+    var dir: std.Io.Dir = blk: {
         // If we have an env and a TZDIR, use that
         if (maybe_env) |env| {
             if (env.get("TZDIR")) |tzdir| {
-                const dir = try std.fs.openDirAbsolute(tzdir, .{});
-                break :blk dir;
+                const d = std.Io.Dir.openDirAbsolute(tzdir, .{}, io) catch return error.FileNotFound;
+                break :blk d;
             }
         }
         // Otherwise check well-known locations
@@ -139,14 +139,14 @@ pub fn loadTimeZone(
             "/etc/zoneinfo/",
         };
         for (zone_dirs) |zone_dir| {
-            const dir = std.fs.openDirAbsolute(zone_dir, .{}) catch continue;
-            break :blk dir;
+            const d = std.Io.Dir.openDirAbsolute(zone_dir, .{}, io) catch continue;
+            break :blk d;
         } else return error.FileNotFound;
     };
 
-    defer dir.close();
-    const f = try dir.openFile(loc.asText(), .{});
-    defer f.close();
+    defer dir.close(io);
+    const f = try dir.openFile(io, loc.asText(), .{});
+    defer f.close(io);
     var io_buffer: [2048]u8 = undefined;
     var reader = f.reader(io, &io_buffer);
     return .{ .tzinfo = try timezone.TZInfo.parse(alloc, &reader.interface) };
@@ -295,19 +295,14 @@ test Instant {
     const zeit = @This();
 
     const alloc = std.testing.allocator;
-    var env = try std.process.getEnvMap(alloc);
-    defer env.deinit();
-
-    var threaded = std.Io.Threaded.init(alloc);
-    defer threaded.deinit();
-    const io = threaded.io();
+    const io = std.testing.io;
 
     // Get an instant in time. The default gets "now" in UTC
     const now = try instant(.{ .io = io });
 
     // Load our local timezone. This needs an allocator. Optionally pass in a
-    // *const std.process.EnvMap to support TZ and TZDIR environment variables
-    const local_tz = try zeit.local(alloc, io, &env);
+    // *const std.process.Environ.Map to support TZ and TZDIR environment variables
+    const local_tz = try zeit.local(alloc, io, null);
     defer local_tz.deinit();
 
     // Convert our instant to a new timezone
