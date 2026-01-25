@@ -68,7 +68,7 @@ pub fn local(alloc: std.mem.Allocator, io: std.Io, maybe_env: ?*const std.proces
                 }
             }
 
-            const f = std.Io.Dir.openFileAbsolute(io, "/etc/localtime", .{}) catch return utc(alloc);
+            const f = std.Io.Dir.openFileAbsolute(io, "/etc/localtime", .{}) catch return utc.*;
             defer f.close(io);
             var io_buffer: [2048]u8 = undefined;
             var reader = f.reader(io, &io_buffer);
@@ -126,7 +126,7 @@ pub fn loadTimeZone(
         // If we have an env and a TZDIR, use that
         if (maybe_env) |env| {
             if (env.get("TZDIR")) |tzdir| {
-                const d = std.Io.Dir.openDirAbsolute(tzdir, .{}, io) catch return error.FileNotFound;
+                const d = std.Io.Dir.openDirAbsolute(io, tzdir, .{}) catch return error.FileNotFound;
                 break :blk d;
             }
         }
@@ -139,7 +139,7 @@ pub fn loadTimeZone(
             "/etc/zoneinfo/",
         };
         for (zone_dirs) |zone_dir| {
-            const d = std.Io.Dir.openDirAbsolute(zone_dir, .{}, io) catch continue;
+            const d = std.Io.Dir.openDirAbsolute(io, zone_dir, .{}) catch continue;
             break :blk d;
         } else return error.FileNotFound;
     };
