@@ -68,7 +68,7 @@ pub fn local(alloc: std.mem.Allocator, io: std.Io, maybe_env: ?*const std.proces
                 }
             }
 
-            const f = std.Io.File.open("/etc/localtime", .{}, io) catch return utc(alloc);
+            const f = std.Io.Dir.openFileAbsolute(io, "/etc/localtime", .{}) catch return utc(alloc);
             defer f.close(io);
             var io_buffer: [2048]u8 = undefined;
             var reader = f.reader(io, &io_buffer);
@@ -95,7 +95,7 @@ fn localFromEnv(
 
     assert(tz.len > 1); // TZ not long enough
     if (tz[1] == '/') {
-        const f = std.Io.File.open(tz[1..], .{}, io) catch return error.FileNotFound;
+        const f = std.Io.Dir.openFileAbsolute(io, tz[1..], .{}) catch return error.FileNotFound;
         defer f.close(io);
         var io_buffer: [1024]u8 = undefined;
         var reader = f.reader(io, &io_buffer);
@@ -339,7 +339,7 @@ test Instant {
     // Load an arbitrary location using IANA location syntax. The location name
     // comes from an enum which will automatically map IANA location names to
     // Windows names, as needed. Pass an optional EnvMap to support TZDIR
-    const vienna = try zeit.loadTimeZone(alloc, io, .@"Europe/Vienna", &env);
+    const vienna = try zeit.loadTimeZone(alloc, io, .@"Europe/Vienna", null);
     defer vienna.deinit();
 
     // Parse an Instant from an ISO8601 or RFC3339 string
