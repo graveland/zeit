@@ -185,7 +185,7 @@ pub fn instant(cfg: Instant.Config) !Instant {
     const ts: Nanoseconds = switch (cfg.source) {
         .now => blk: {
             const io = cfg.io orelse return error.IoRequired;
-            const now = try std.Io.Clock.Timestamp.now(io, .real);
+            const now = std.Io.Clock.Timestamp.now(io, .real);
             break :blk now.raw.nanoseconds;
         },
         .unix_timestamp => |unix| @as(i128, unix) * ns_per_s,
@@ -215,7 +215,7 @@ pub fn instant(cfg: Instant.Config) !Instant {
 }
 
 test "instant" {
-    const now = try std.Io.Clock.Timestamp.now(std.testing.io, .awake);
+    const now = std.Io.Clock.Timestamp.now(std.testing.io, .awake);
     const original = Instant{
         .timestamp = now.raw.nanoseconds,
         .timezone = utc,

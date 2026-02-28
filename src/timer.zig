@@ -11,7 +11,7 @@ pub const Timer = struct {
     /// Start a new timer from the current time.
     /// Uses the monotonic clock (.awake) which is not affected by system time changes.
     pub fn start(io: std.Io) Timer {
-        const start_ns = if (std.Io.Clock.Timestamp.now(io, .awake)) |ts| ts.raw.nanoseconds else |_| 0;
+        const start_ns = std.Io.Clock.Timestamp.now(io, .awake).raw.nanoseconds;
         return .{ .start_ns = start_ns, .io = io };
     }
 
@@ -19,8 +19,7 @@ pub const Timer = struct {
     /// Supports both integer and floating-point return types.
     /// Usage: timer.elapsedAs(u64, .micros) or timer.elapsedAs(f64, .millis)
     pub fn elapsedAs(self: Timer, comptime T: type, comptime unit: constants.Unit) T {
-        const now = std.Io.Clock.Timestamp.now(self.io, .awake) catch return 0;
-        const elapsed_ns = now.raw.nanoseconds - self.start_ns;
+        const elapsed_ns = std.Io.Clock.Timestamp.now(self.io, .awake).raw.nanoseconds - self.start_ns;
         const divisor: i128 = unit.toNanoseconds();
         const value = @divFloor(elapsed_ns, divisor);
         return switch (@typeInfo(T)) {
@@ -39,15 +38,13 @@ pub const Timer = struct {
     /// Get elapsed time as a Duration.
     /// Usage: const dur = timer.elapsedDuration();
     pub fn elapsedDuration(self: Timer) Duration {
-        const now = std.Io.Clock.Timestamp.now(self.io, .awake) catch return Duration{};
-        const elapsed_ns = now.raw.nanoseconds - self.start_ns;
+        const elapsed_ns = std.Io.Clock.Timestamp.now(self.io, .awake).raw.nanoseconds - self.start_ns;
         return Duration.fromNanoseconds(elapsed_ns);
     }
 
     /// Reset the timer to now
     pub fn reset(self: *Timer) void {
-        const ts = std.Io.Clock.Timestamp.now(self.io, .awake) catch return;
-        self.start_ns = ts.raw.nanoseconds;
+        self.start_ns = std.Io.Clock.Timestamp.now(self.io, .awake).raw.nanoseconds;
     }
 
     test "Timer.elapsed simple API" {
